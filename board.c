@@ -12,18 +12,21 @@
 
 #define COMMAND 1
 #define INTLENGTH 4
+#define FILEREAD 1024
 
 int main(int argc, char *argv[]){
 	int pidfd, dirfd;
 	pid_t pid;
+	int fd;
 	int channelid;
 	int msgsize;
-	int bytesleft;
+	int bytesleft, bytesread;
 	int templength, templength2;
 	int b1fd, b2fd, p1fd, p2fd;
 	int b1bytes, b2bytes, p1bytes, p2bytes;
 	char msgbuf;
 	int i;
+	int j;
 	char *text;
 	DIR *dir_ptr;
 	struct stat st = {0};
@@ -93,7 +96,6 @@ int main(int argc, char *argv[]){
 			channarray = malloc(4*sizeof(channel));
 			for (i = 0; i < 4; i++) {
 				channarray[i].id = 0;
-				channarray[i].numMess = 0;
 			}
 			arraysize = 4;
 			numchannels = 0;
@@ -119,14 +121,19 @@ int main(int argc, char *argv[]){
 						if ( (read(b1fd, &channelid, INTLENGTH)) == 4) {
 							printf("message from boardpost received = %d\n", channelid);
 						}
-						if (checkChannel(channarray, numchannels, channelid) == 0) {
-							validch = 1;
-						}
+
+						//	Valid channel check
+						validch = 1;
+						for (i = 0; i < numchannels; i++) {
+					    if (channarray[i].id == channelid) {
+					      validch = 0;
+					    }
+					  }
 
 						if ( (read(b1fd, &msgsize, INTLENGTH)) == 4) {
 							printf("message from boardpost received = %d\n", msgsize);
 						}
-						text = malloc(msgsize);
+						text = malloc(msgsize + 1);
 
 						if (validch) {
 							//	Check if the channel array is full
@@ -137,7 +144,8 @@ int main(int argc, char *argv[]){
 
 							channarray[numchannels].id = channelid;
 							channarray[numchannels].numMess = 0;
-							channarray[numchannels].name = malloc(msgsize);
+							channarray[numchannels].numArray = 4;
+							channarray[numchannels].name = malloc(msgsize + 1);
 							channarray[numchannels].messages = malloc(4*sizeof(message));
 							numchannels++;
 						}
@@ -145,14 +153,16 @@ int main(int argc, char *argv[]){
 						bytesleft = msgsize;
 						while ((b1bytes = read(b1fd, text, msgsize)) > bytesleft) {
 							if (b1bytes > 0) {
+								text += b1bytes;
 								bytesleft -= b1bytes;
 							}
-							if (validch && b1bytes > 0) {
-								memcpy(channarray[numchannels - 1].name + strlen(channarray[numchannels - 1].name), text, b1bytes);
-							}
 						}
+						text += b1bytes;
+						*text = '\0';
+						text -= msgsize;
+
 						if (validch) {
-							memcpy(channarray[numchannels - 1].name + strlen(channarray[numchannels - 1].name), text, b1bytes);
+							memcpy(channarray[numchannels - 1].name, text, msgsize + 1);
 						}
 
 						if (write(b2fd, &validch, INTLENGTH) == -1) {
@@ -211,22 +221,146 @@ int main(int argc, char *argv[]){
 					}
 
 					if (msgbuf == 'w') {
-						printf("message from boardpost received = %c\n", msgbuf);
 						if ( (read(p1fd, &channelid, INTLENGTH)) == 4) {
-							printf("message from boardpost received = %d\n", channelid);
+							// printf("message from boardpost received = %d\n", channelid);
 						}
+
+						if (checkChannel(channarray, numchannels, channelid)) {
+							validch = 1;
+						}
+						else {
+							validch = 0;
+						}
+
 						if ( (read(p1fd, &msgsize, INTLENGTH)) == 4) {
-							printf("message from boardpost received = %d\n", msgsize);
+							// printf("message from boardpost received = %d\n", msgsize);
 						}
-						text = malloc(msgsize);
+						text = malloc(msgsize + 1);
+
+						// bytesleft = msgsize;
+						// while ((p1bytes = read(p1fd, text, msgsize)) > bytesleft) {
+						// 	if (p1bytes > 0) {
+						// 		bytesleft -= p1bytes;
+						// 	}
+						// }
 
 						bytesleft = msgsize;
 						while ((p1bytes = read(p1fd, text, msgsize)) > bytesleft) {
 							if (p1bytes > 0) {
+								text += b1bytes;
 								bytesleft -= p1bytes;
 							}
 						}
-						printf("message in server = %s\n", text);
+						text += p1bytes;
+						*text = '\0';
+						text -= msgsize;
+
+						if (validch) {
+							for (i = 0; i < numchannels; i++) {
+								if (channarray[i].id == channelid) {
+									if (channarray[i].numMess == channarray[i].numArray) {
+										channarray[i].numArray *= 2;
+										channarray[i].messages = realloc(channarray[i].messages, channarray[i].numArray*sizeof(message));
+									}
+
+									channarray[i].messages[channarray[i].numMess].text = malloc(msgsize + 1);
+									channarray[i].messages[channarray[i].numMess].isMessage = 1;
+									memcpy(channarray[i].messages[channarray[i].numMess].text, text, msgsize + 1);
+									channarray[i].numMess++;
+								}
+							}
+						}
+
+						if (write(p2fd, &validch, INTLENGTH) == -1) {
+								perror("Error in Writing (server write)");
+								exit(2);
+						}
+
+						//	Printing to check if messages are stored correctly
+						int j;
+						for (i = 0; i < numchannels; i++) {
+							if (channarray[i].id == channelid) {
+								for (j = 0; j < channarray[i].numMess; j++) {
+									printf("message %d = %s\n", j+1, channarray[i].messages[j].text );
+								}
+							}
+						}
+
+						free(text);
+					}
+
+					if (msgbuf == 's') {
+						if ( (read(p1fd, &channelid, INTLENGTH)) == 4) {
+							// printf("message from boardpost received = %d\n", channelid);
+						}
+
+						if (checkChannel(channarray, numchannels, channelid)) {
+							validch = 1;
+						}
+						else {
+							validch = 0;
+						}
+
+						if ( (read(p1fd, &msgsize, INTLENGTH)) == 4) {
+							// printf("message from boardpost received = %d\n", msgsize);
+						}
+						text = malloc(msgsize + 1);
+
+						bytesleft = msgsize;
+						while ((p1bytes = read(p1fd, text, msgsize)) > bytesleft) {
+							if (p1bytes > 0) {
+								text += b1bytes;
+								bytesleft -= p1bytes;
+							}
+						}
+						text += p1bytes;
+						*text = '\0';
+						text -= msgsize;
+
+						if (validch) {
+							for (i = 0; i < numchannels; i++) {
+								if (channarray[i].id == channelid) {
+									if (channarray[i].numMess == channarray[i].numArray) {
+										channarray[i].numArray *= 2;
+										channarray[i].messages = realloc(channarray[i].messages, channarray[i].numArray*sizeof(message));
+									}
+
+									channarray[i].messages[channarray[i].numMess].text = malloc(msgsize + 1);
+									channarray[i].messages[channarray[i].numMess].isMessage = 0;
+									memcpy(channarray[i].messages[channarray[i].numMess].text, text, msgsize + 1);
+									channarray[i].numMess++;
+								}
+							}
+						}
+
+						while (read(p1fd, &templength, INTLENGTH) < 1);
+
+						if ((fd = open("/tmp/sdi1100094/sendfile.txt", O_CREAT | O_WRONLY, 0777)) == -1) {
+							printf("Unable to open file\n");
+							close(p2fd);
+							continue;
+						}
+
+						text = malloc(FILEREAD);
+						bytesread = FILEREAD;
+
+						while (templength > 0) {
+							if (templength < FILEREAD) {
+								bytesread = templength;
+							}
+							if ((p1bytes = read(p1fd, text, bytesread)) > 0 ) {
+								msgsize = write(fd, text, p1bytes);
+								templength -= p1bytes;
+							}
+						}
+
+						validch = 1;
+						if (write(p2fd, &validch, INTLENGTH) == -1) {
+								perror("Error in Writing (server channel id)");
+								exit(2);
+						}
+						
+						close(fd);
 						free(text);
 					}
 
@@ -300,7 +434,7 @@ int main(int argc, char *argv[]){
 			}
 		}
 		else if (strcmp("getmessages", token) == 0) {
-			command = 'w';
+			command = 'g';
 			if ((nwrite = write(b1fd, &command, COMMAND)) == -1) {
 					perror("Error in Writing (write)");
 					exit(2);

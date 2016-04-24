@@ -7,16 +7,21 @@
 #include <string.h>
 #include <error.h>
 #include <unistd.h>
+#include <libgen.h>
 
 #define COMMAND 1
 #define INTLENGTH 4
+#define FILEREAD 1024
 
 int main(int argc, char *argv[]){
 	const char s[2] = " ";
 	char *token;
-	char *name;
 	char *temptext;
+	char *filename;
 	char command;
+	int fd;
+	int bytesread;
+	int filesize;
 	int chanelnum;
 	int channelid;
 	int templength, templength2;
@@ -26,6 +31,8 @@ int main(int argc, char *argv[]){
 	int i;
 	int nwrite;
 	char str[300];
+
+	struct stat statbuf;
 
 	if (argc != 2) {
 		printf("Usage: Provide Path Name\n");
@@ -62,51 +69,39 @@ int main(int argc, char *argv[]){
 
 			printf("templength = %d\n", templength);
 			for (i = 0; i < templength; i++) {
-				// if (read(p2fd, &channelid, INTLENGTH) == 4) {
-				// 	printf("Channel %d ID = %d\n", i, channelid);
-				// }
-				// printf("AAAA\n");
-				// if (read(p2fd, &templength2, INTLENGTH) == 4) {
-				// 	printf("BBBB\n");
-				// 	temptext = malloc(templength2);
-				// 	name = malloc(templength2);
-				// 	printf("CCCC\n");
-				// }
-				//
-				// while ((p2bytes = read(p2fd, temptext, templength2)) > bytesleft) {
-				// 	if (p2bytes < 0) {
-				// 		printf("DDDD\n");
-				// 	}
-				// 	if (p2bytes > 0) {
-				// 		bytesleft -= p2bytes;
-				// 		memcpy(name + strlen(name), temptext, p2bytes);
-				// 	}
-				// }
-				// printf("DDDDDD\n");
-				// memcpy(name + strlen(name), temptext, p2bytes);
-				//
-				// printf("Channel name = %s\n", name);
 				printf("Channel %d\n", i+1);
 				if ( (read(p2fd, &channelid, INTLENGTH)) == 4) {
 					printf("ID = %d\n", channelid);
 				}
 				read(p2fd, &templength2, INTLENGTH);
 
-				temptext = malloc(templength2);
-				name = malloc(templength2);
+				temptext = malloc(templength2 + 1);
+
+				// bytesleft = templength2;
+				// while ((p2bytes = read(p2fd, temptext, templength2)) > bytesleft) {
+				// 	if (p2bytes > 0) {
+				// 		bytesleft -= p2bytes;
+				// 		memcpy(name + strlen(name), temptext, p2bytes);
+				// 	}
+				// }
+				// memcpy(name + strlen(name), temptext, p2bytes);
+
 
 				bytesleft = templength2;
 				while ((p2bytes = read(p2fd, temptext, templength2)) > bytesleft) {
 					if (p2bytes > 0) {
+						temptext += p2bytes;
 						bytesleft -= p2bytes;
-						memcpy(name + strlen(name), temptext, p2bytes);
 					}
 				}
-				memcpy(name + strlen(name), temptext, p2bytes);
-				printf("Name = %s\n", name);
+				temptext += p2bytes;
+				*temptext = '\0';
+				temptext -= templength2;
+
+
+				printf("Name = %s\n", temptext);
 
 				free(temptext);
-				free(name);
 			}
 		}
 		else if (strcmp("write", token) == 0) {
@@ -133,8 +128,81 @@ int main(int argc, char *argv[]){
 					perror("Error in Writing (write text)");
 					exit(2);
 			}
+
+			while (read(p2fd,&templength,INTLENGTH) < 1);
+
+			if (templength == 1) {
+				printf("Data stored successfully\n");
+			}
+			else {
+				printf("Unable to locate that channel\n");
+			}
 		}
 		else if (strcmp("send", token) == 0) {
+			command = 's';
+
+			if ((nwrite = write(p1fd, &command, COMMAND)) == -1) {
+					perror("Error in Writing (send)");
+					exit(2);
+			}
+			token = strtok(NULL, s);
+			chanelnum = atoi(token);
+
+			if ((nwrite = write(p1fd, &chanelnum, INTLENGTH)) == -1) {
+					perror("Error in Writing (send chanel)");
+					exit(2);
+			}
+			token = strtok(NULL, "");
+			templength = strlen(token);
+
+			if ((nwrite = write(p1fd, &templength, INTLENGTH)) == -1) {
+					perror("Error in Writing (send message length)");
+					exit(2);
+			}
+			if ((nwrite = write(p1fd, token, templength)) == -1) {
+					perror("Error in Writing (send text)");
+					exit(2);
+			}
+
+			if ((fd = open(token, O_RDONLY, 0777)) == -1) {
+				printf("File does not exist\n");
+				continue;
+			}
+
+			if (fstat(fd, &statbuf) == -1) {
+				perror("Failed to get file status");
+				exit(2);
+			}
+			else {
+				filesize = (int)statbuf.st_size;
+			}
+
+			if ((nwrite = write(p1fd, &filesize, INTLENGTH)) == -1) {
+					perror("Error in Writing (send filesize)");
+					exit(2);
+			}
+
+			temptext = malloc(FILEREAD);
+			bytesread = FILEREAD;
+
+			while (filesize > 0) {
+				if (filesize < FILEREAD) {
+					bytesread = filesize;
+				}
+				if ((p1bytes = read(fd, temptext, bytesread)) > 0 ) {
+					nwrite = write(p1fd, temptext, p1bytes);
+					filesize -= p1bytes;
+				}
+			}
+
+			while (read(p2fd, &templength, INTLENGTH) < 1);
+			if (templength) {
+				printf("File was sent successfully\n");
+			}
+			// filename = basename(token);
+			// printf("filename = %s\n", filename);
+			close(fd);
+			free(temptext);
 		}
 		else {
 			printf("Wrong command\n");

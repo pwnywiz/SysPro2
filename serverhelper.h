@@ -10,8 +10,9 @@ typedef struct message message;
 
 struct channel {
 	int id;
-	int numMess;	//	Number of messages in the channel
 	char *name;		//	Name of the channel
+	int numMess;	//	Number of messages in the channel
+	int numArray; //	Number of empty array slots
 	message *messages;	//	Messages array
 };
 
