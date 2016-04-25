@@ -19,7 +19,9 @@ int main(int argc, char *argv[]){
 	pid_t pid;
 	int fd;
 	int channelid;
-	int msgsize;
+	int sendchann;
+	int byteswriten;
+	int msgsize, filesize;
 	int bytesleft, bytesread;
 	int templength, templength2;
 	int b1fd, b2fd, p1fd, p2fd;
@@ -27,7 +29,7 @@ int main(int argc, char *argv[]){
 	char msgbuf;
 	int i;
 	int j;
-	char *text;
+	char *text, *text2;
 	DIR *dir_ptr;
 	struct stat st = {0};
 
@@ -119,7 +121,7 @@ int main(int argc, char *argv[]){
 
 					if (msgbuf == 'c') {
 						if ( (read(b1fd, &channelid, INTLENGTH)) == 4) {
-							printf("message from boardpost received = %d\n", channelid);
+							// printf("message from boardpost received = %d\n", channelid);
 						}
 
 						//	Valid channel check
@@ -131,7 +133,7 @@ int main(int argc, char *argv[]){
 					  }
 
 						if ( (read(b1fd, &msgsize, INTLENGTH)) == 4) {
-							printf("message from boardpost received = %d\n", msgsize);
+							// printf("message from boardpost received = %d\n", msgsize);
 						}
 						text = malloc(msgsize + 1);
 
@@ -175,6 +177,91 @@ int main(int argc, char *argv[]){
 					}
 
 					if (msgbuf == 'g') {
+						if ( (read(b1fd, &channelid, INTLENGTH)) == 4) {
+							// printf("message from boardpost received = %d\n", channelid);
+						}
+
+						//	Valid channel check
+						validch = 0;
+						for (i = 0; i < numchannels; i++) {
+					    if (channarray[i].id == channelid) {
+					      validch = 1;
+								sendchann = i;
+					    }
+					 	}
+						write(b2fd, &validch, INTLENGTH);
+						if (validch == 0) {
+							close(b2fd);
+							continue;
+						}
+
+						write(b2fd, &channarray[sendchann].numMess, INTLENGTH);
+
+						for (i = 0; i < channarray[sendchann].numMess; i++) {
+							templength = strlen(channarray[sendchann].messages[i].text);
+
+							if (write(b2fd, &channarray[sendchann].messages[i].isMessage, INTLENGTH) == -1) {
+									perror("Error in Writing (server getmessages)");
+									exit(2);
+							}
+							if (write(b2fd, &templength, INTLENGTH) == -1) {
+									perror("Error in Writing (server getmessages)");
+									exit(2);
+							}
+							if (write(b2fd, channarray[sendchann].messages[i].text, templength) == -1) {
+									perror("Error in Writing (server getmessages)");
+									exit(2);
+							}
+
+							if (channarray[sendchann].messages[i].isMessage == 0) {
+								// if ((fd = open(channarray[sendchann].messages[i].text, O_RDONLY, 0777)) == -1) {
+								if ((fd = open("/tmp/sdi1100094/sendfile.txt", O_RDONLY, 0777)) == -1) {
+									printf("File does not exist\n");
+									continue;
+								}
+
+								if (fstat(fd, &st) == -1) {
+									perror("Failed to get file status");
+									exit(2);
+								}
+								else {
+									filesize = (int)st.st_size;
+								}
+
+								if (write(b2fd, &filesize, INTLENGTH) == -1) {
+										perror("Error in Writing (send filesize)");
+										exit(2);
+								}
+
+								text2 = malloc(FILEREAD);
+								bytesread = FILEREAD;
+
+								while (filesize > 0) {
+									if (filesize < FILEREAD) {
+										bytesread = filesize;
+									}
+									if ((b2bytes = read(fd, text2, bytesread)) > 0 ) {
+										byteswriten = write(b2fd, text2, b2bytes);
+										filesize -= b2bytes;
+									}
+								}
+							}
+
+							free(channarray[sendchann].messages[i].text);
+							// if (channarray[sendchann].messages[i].isMessage == 0) {
+							// 	// if (unlink(channarray[sendchann].messages[i].text) == -1) {
+							// 	// if (unlink("/tmp/sdi1100094/sendfile.txt") == -1) {
+							// 	// 	printf("ABAB\n");
+							// 	// 	perror("Unlink Error");
+							// 	// 	exit(2);
+							// 	// }
+							// 	unlink("/tmp/sdi1100094/sendfile.txt");
+							// }
+
+						}
+
+						channarray[sendchann].numMess = 0;
+
 					}
 
 					if (msgbuf == 's') {
@@ -277,14 +364,14 @@ int main(int argc, char *argv[]){
 						}
 
 						//	Printing to check if messages are stored correctly
-						int j;
-						for (i = 0; i < numchannels; i++) {
-							if (channarray[i].id == channelid) {
-								for (j = 0; j < channarray[i].numMess; j++) {
-									printf("message %d = %s\n", j+1, channarray[i].messages[j].text );
-								}
-							}
-						}
+						// int j;
+						// for (i = 0; i < numchannels; i++) {
+						// 	if (channarray[i].id == channelid) {
+						// 		for (j = 0; j < channarray[i].numMess; j++) {
+						// 			printf("message %d = %s\n", j+1, channarray[i].messages[j].text );
+						// 		}
+						// 	}
+						// }
 
 						free(text);
 					}
@@ -359,7 +446,7 @@ int main(int argc, char *argv[]){
 								perror("Error in Writing (server channel id)");
 								exit(2);
 						}
-						
+
 						close(fd);
 						free(text);
 					}
@@ -381,6 +468,7 @@ int main(int argc, char *argv[]){
 	char command;
 	int nwrite;
 	int tempbuf;
+	int isMsg;
 	char str[300];
 
 	if ( (b1fd = open("/tmp/sdi1100094/_boardfifo1", O_WRONLY)) < 0) {
@@ -441,22 +529,75 @@ int main(int argc, char *argv[]){
 			}
 			token = strtok(NULL, s);
 			channelid = atoi(token);
-			// printf("channelid = %d\n", channelid);
+
 			if ((nwrite = write(b1fd, &channelid, INTLENGTH)) == -1) {
 					perror("Error in Writing (write channel)");
 					exit(2);
 			}
-			token = strtok(NULL, "");
-			templength = strlen(token);
-			if ((nwrite = write(b1fd, &templength, INTLENGTH)) == -1) {
-					perror("Error in Writing (write message length)");
-					exit(2);
+
+			while (read(b2fd,&tempbuf,INTLENGTH) < 1);
+
+			//	Channel does not exist
+			if (tempbuf == 0) {
+				printf("The channel you requested does not exist\n");
+				continue;
 			}
-			// printf("message %s with size %d\n", token, templength);
-			if ((nwrite = write(b1fd, token, templength)) == -1) {
-					perror("Error in Writing (write channel)");
-					exit(2);
+
+			while (read(b2fd,&tempbuf,INTLENGTH) < 1);
+
+			//	Channel is empty
+			if (tempbuf == 0) {
+				printf("The channel you requested is empty\n");
+				continue;
 			}
+
+			printf("Printing messages of channel %d\n", channelid);
+			for (i = 0; i < tempbuf; i++) {
+				printf("Message %d = ", i+1);
+				read(b2fd, &isMsg, INTLENGTH);	//	Is it a file or message
+				read(b2fd, &templength, INTLENGTH);	//	Length of the message text or file path
+
+				text = malloc(templength + 1);
+
+				bytesleft = templength;
+				while ((b2bytes = read(b2fd, text, templength)) > bytesleft) {
+					if (b2bytes > 0) {
+						text += b2bytes;
+						bytesleft -= b2bytes;
+					}
+				}
+				text += b2bytes;
+				*text = '\0';
+				text -= templength;
+
+				printf("%s\n", text);
+
+				if (isMsg == 0) {
+					while (read(b2fd, &templength2, INTLENGTH) < 1);
+
+					if ((fd = open("sendfile2.txt", O_CREAT | O_WRONLY, 0777)) == -1) {
+						printf("Unable to open file\n");
+						close(b2fd);
+						continue;
+					}
+
+					text2 = malloc(FILEREAD);
+					bytesread = FILEREAD;
+
+					while (templength2 > 0) {
+						if (templength2 < FILEREAD) {
+							bytesread = templength2;
+						}
+						if ((b2bytes = read(b2fd, text2, bytesread)) > 0 ) {
+							msgsize = write(fd, text2, b2bytes);
+							templength2 -= b2bytes;
+						}
+					}
+
+					close(fd);
+				}
+			}
+
 		}
 		else if (strcmp("exit", token) == 0) {
 			break;
