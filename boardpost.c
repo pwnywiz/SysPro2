@@ -1,5 +1,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <signal.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,6 +32,8 @@ int main(int argc, char *argv[]){
 	int i;
 	int nwrite;
 	char str[300];
+
+	signal(SIGINT, SIG_IGN);
 
 	struct stat statbuf;
 
@@ -67,7 +70,6 @@ int main(int argc, char *argv[]){
 				continue;
 			}
 
-			printf("templength = %d\n", templength);
 			for (i = 0; i < templength; i++) {
 				printf("Channel %d\n", i+1);
 				if ( (read(p2fd, &channelid, INTLENGTH)) == 4) {
@@ -76,16 +78,6 @@ int main(int argc, char *argv[]){
 				read(p2fd, &templength2, INTLENGTH);
 
 				temptext = malloc(templength2 + 1);
-
-				// bytesleft = templength2;
-				// while ((p2bytes = read(p2fd, temptext, templength2)) > bytesleft) {
-				// 	if (p2bytes > 0) {
-				// 		bytesleft -= p2bytes;
-				// 		memcpy(name + strlen(name), temptext, p2bytes);
-				// 	}
-				// }
-				// memcpy(name + strlen(name), temptext, p2bytes);
-
 
 				bytesleft = templength2;
 				while ((p2bytes = read(p2fd, temptext, templength2)) > bytesleft) {
@@ -112,7 +104,7 @@ int main(int argc, char *argv[]){
 			}
 			token = strtok(NULL, s);
 			chanelnum = atoi(token);
-			// printf("chanelnum = %d\n", chanelnum);
+
 			if ((nwrite = write(p1fd, &chanelnum, INTLENGTH)) == -1) {
 					perror("Error in Writing (write chanel)");
 					exit(2);
@@ -123,7 +115,7 @@ int main(int argc, char *argv[]){
 					perror("Error in Writing (write message length)");
 					exit(2);
 			}
-			// printf("message %s with size %d\n", token, templength);
+
 			if ((nwrite = write(p1fd, token, templength)) == -1) {
 					perror("Error in Writing (write text)");
 					exit(2);

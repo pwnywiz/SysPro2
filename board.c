@@ -1,5 +1,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <signal.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,7 +29,7 @@ int main(int argc, char *argv[]){
 	int b1bytes, b2bytes, p1bytes, p2bytes;
 	char msgbuf;
 	int i;
-	int j;
+	char *userpath;
 	char *text, *text2;
 	DIR *dir_ptr;
 	struct stat st = {0};
@@ -38,6 +39,10 @@ int main(int argc, char *argv[]){
 		printf("Usage: Provide Path Name \n");
 		exit(1);
 	}
+
+	// if (signal(SIGINT, SIG_IGN) != SIG_IGN)
+  //   signal(SIGINT, ignore);
+	signal(SIGINT, SIG_IGN);
 
 	//	Check if the given path exists, else create it
 	if (stat(argv[1], &st) == -1) {
@@ -58,16 +63,15 @@ int main(int argc, char *argv[]){
 			exit(1);
 		}
 		if (pid != 0) {
-			pidfd = open("/tmp/sdi1100094/_pid", O_RDONLY);
-			char temp[20];
-			sprintf(temp, "%d", pidfd);
-			write(pidfd, temp, 20);
+			pidfd = open("/tmp/sdi1100094/_pid", O_WRONLY);
+			char temp[4];
+			sprintf(temp, "%d", pid);
+			write(pidfd, temp, 4);
 			close(pidfd);
 		}
 
 		//	Server
 		if (pid == 0) {
-			printf("Process pid = %d\n", getppid());
 			//	Create all the required named pipes
 			if ( mkfifo("/tmp/sdi1100094/_boardfifo1", 0666) == -1 ){
 				if ( errno != EEXIST ) {
@@ -173,7 +177,7 @@ int main(int argc, char *argv[]){
 						}
 
 						validch = 0;
-						free(text);
+						// free(text);
 					}
 
 					if (msgbuf == 'g') {
@@ -265,7 +269,14 @@ int main(int argc, char *argv[]){
 					}
 
 					if (msgbuf == 's') {
+						close(b1fd);
 						close(b2fd);
+						close(p1fd);
+						close(p2fd);
+						unlink("/tmp/sdi1100094/_boardfifo1");
+						unlink("/tmp/sdi1100094/_boardfifo2");
+						unlink("/tmp/sdi1100094/_postfifo1");
+						unlink("/tmp/sdi1100094/_postfifo2");
 						break;
 					}
 
@@ -373,7 +384,7 @@ int main(int argc, char *argv[]){
 						// 	}
 						// }
 
-						free(text);
+						// free(text);
 					}
 
 					if (msgbuf == 's') {
@@ -448,7 +459,7 @@ int main(int argc, char *argv[]){
 						}
 
 						close(fd);
-						free(text);
+						// free(text);
 					}
 
 					close(p2fd);
@@ -608,6 +619,7 @@ int main(int argc, char *argv[]){
 					perror("Error in Writing (channel)");
 					exit(2);
 			}
+			break;
 		}
 		else {
 			printf("Wrong command\n");
